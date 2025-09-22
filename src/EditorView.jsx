@@ -2,10 +2,11 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Papa from 'papaparse';
 import CsvEditor from './CsvEditor';
 import validateFile from './validation';
+import Modal from './Modal';
 
 const AddIcon = () => <svg stroke="currentColor" fill="none" strokeWidth="2" viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round" height="1em" width="1em" xmlns="http://www.w3.org/2000/svg"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>;
 const TrashIcon = () => <svg stroke="currentColor" fill="none" strokeWidth="2" viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round" height="1em" width="1em" xmlns="http://www.w3.org/2000/svg"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>;
-const RefreshIcon = () => <svg stroke="currentColor" fill="none" strokeWidth="2" viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round" height="1em" width="1em" xmlns="http://www.w3.org/2000/svg"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0  0 0 20.49 15"></path></svg>;
+const RefreshIcon = () => <svg stroke="currentColor" fill="none" strokeWidth="2" viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round" height="1em" width="1em" xmlns="http://www.w3.org/2000/svg"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>;
 const DownloadIcon = () => <svg stroke="currentColor" fill="none" strokeWidth="2" viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round" height="1em" width="1em" xmlns="http://www.w3.org/2000/svg"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>;
 const CreateIcon = () => (
   <svg stroke="currentColor" fill="none" strokeWidth="2" viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round" height="2em" width="2em" xmlns="http://www.w3.org/2000/svg"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="12" y1="18" x2="12" y2="12"></line><line x1="9" y1="15" x2="15" y2="15"></line></svg>
@@ -25,29 +26,35 @@ const EditorView = ({ mode, fileToLoad, onEditorViewLoaded }) => {
   const [analysisData, setAnalysisData] = useState(initialState);
   const [isAccordionOpen, setAccordionOpen] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
-    console.log("EditorView.jsx: useEffect triggered. fileToLoad:", fileToLoad, "mode:", mode);
     if (fileToLoad && mode === 'analyze') {
-      console.log("EditorView.jsx: Processing fileToLoad.");
       const { type, data, fileName } = fileToLoad;
       const validationResult = validateFile(type, data);
-      setAnalysisData(prevData => ({
-        ...prevData,
-        [type]: {
-          analysis: validationResult,
-          fileName: fileName,
-          rowCount: data.length,
-          data: data,
-          error: null,
-        },
-      }));
+      const invalidHeadersError = validationResult.errors.find(e => e.code === 'INVALID_HEADERS');
+
+      if (invalidHeadersError) {
+        setError(invalidHeadersError.message);
+        setAnalysisData(initialState);
+      } else {
+        setAnalysisData(prevData => ({
+          ...prevData,
+          [type]: {
+            analysis: validationResult,
+            fileName: fileName,
+            rowCount: data.length,
+            data: data,
+            error: null,
+          },
+        }));
+      }
+      
       setActiveTab(type);
       setTimeout(() => {
         onEditorViewLoaded(); 
-      }, 0); // Defer calling onEditorViewLoaded to allow the component to render with the new data first
-    } else if (mode === 'analyze') { // Only load from localStorage if in 'analyze' mode and no fileToLoad
-      console.log("EditorView.jsx: fileToLoad not present, mode is 'analyze'. Checking localStorage.");
+      }, 0);
+    } else if (mode === 'analyze') {
       try {
         const savedData = localStorage.getItem('instoreFilesCheckData');
         if (savedData) {
@@ -57,27 +64,32 @@ const EditorView = ({ mode, fileToLoad, onEditorViewLoaded }) => {
         console.error("Failed to parse data from localStorage", error);
       }
     } else if (mode === 'create') {
-      console.log("EditorView.jsx: Entering create mode. Resetting analysisData.");
       setAnalysisData(initialState);
-      setActiveTab(TABS[0]); // Ensure a default active tab
+      setActiveTab(TABS[0]);
     }
   }, [fileToLoad, mode, onEditorViewLoaded]);
 
   useEffect(() => {
-    console.log("EditorView.jsx: analysisData updated:", analysisData);
     localStorage.setItem('instoreFilesCheckData', JSON.stringify(analysisData));
   }, [analysisData]);
 
   const handleFileParsed = (type, result) => {
-    const newState = mode === 'analyze' ? initialState : analysisData;
-    setAnalysisData({
-      ...newState,
-      [type]: result,
-    });
+    const invalidHeadersError = result.analysis.errors.find(e => e.code === 'INVALID_HEADERS');
+    if (invalidHeadersError) {
+      setError(invalidHeadersError.message);
+      setAnalysisData(initialState);
+    } else {
+      const newState = mode === 'analyze' ? initialState : analysisData;
+      setAnalysisData({
+        ...newState,
+        [type]: result,
+      });
+    }
     setAccordionOpen(false);
   };
 
-  const handleCreateFromTemplate = (templateName) => {
+  const handleCreateFromTemplate = (templateName, tabName) => {
+    setActiveTab(tabName);
     fetch(`/templates/${templateName}.csv`)
       .then(response => response.text())
       .then(csvText => {
@@ -88,11 +100,11 @@ const EditorView = ({ mode, fileToLoad, onEditorViewLoaded }) => {
             const headers = results.meta.fields;
             const emptyRow = headers.reduce((acc, header) => ({ ...acc, [header]: '' }), {});
             const initialData = [emptyRow];
-            const validationResult = validateFile(activeTab, initialData);
+            const validationResult = validateFile(tabName, initialData);
 
             setAnalysisData(prevData => ({
               ...prevData,
-              [activeTab]: {
+              [tabName]: {
                 analysis: validationResult,
                 fileName: `${templateName}.csv`,
                 rowCount: 1,
@@ -162,6 +174,28 @@ const EditorView = ({ mode, fileToLoad, onEditorViewLoaded }) => {
     }
   };
 
+  const handleAddMissingColumns = (missingFields) => {
+    const currentData = analysisData[activeTab].data;
+    const newData = currentData.map(row => {
+      const newRow = { ...row };
+      missingFields.forEach(field => {
+        newRow[field] = '';
+      });
+      return newRow;
+    });
+
+    const validationResult = validateFile(activeTab, newData);
+
+    setAnalysisData(prevData => ({
+      ...prevData,
+      [activeTab]: {
+        ...prevData[activeTab],
+        data: newData,
+        analysis: validationResult,
+      },
+    }));
+  };
+
   const handleDeleteEmptyRows = () => {
     if (window.confirm("Are you sure you want to delete all empty rows?")) {
       const currentData = analysisData[activeTab].data;
@@ -210,17 +244,26 @@ const EditorView = ({ mode, fileToLoad, onEditorViewLoaded }) => {
     const { analysis } = result;
     const hasErrors = analysis && !analysis.isValid;
     const errorCount = hasErrors ? analysis.errors.length : 0;
+
+    let titleText = `Analysis of ${type}`;
+    if (type === 'Catalogue' && analysis && analysis.catalogueType && analysis.catalogueType !== 'N/A' && analysis.catalogueType !== 'Unknown') {
+      titleText = `Analysis of ${analysis.catalogueType} Catalogue`;
+    }
+
     const title = hasErrors ? (
       <>
-        Analysis of {type} | Errors detected: <strong>{errorCount}</strong>
+        {titleText} | Errors detected: <strong>{errorCount}</strong>
       </>
     ) : (
-      `Analysis of ${type} | All correct`
+      `${titleText} | All correct`
     );
+
     const accordionClasses = `accordion ${hasErrors ? 'has-errors' : 'is-correct'}`;
 
     let errorString = '';
+    let missingColumnsError = null;
     if (hasErrors) {
+      missingColumnsError = analysis.errors.find(e => e.code === 'MISSING_COLUMNS');
       const errorsByRow = analysis.errors.reduce((acc, error) => {
         const rowKey = error.row ? `Row ${error.row}` : 'General Errors';
         if (!acc[rowKey]) acc[rowKey] = [];
@@ -244,7 +287,14 @@ const EditorView = ({ mode, fileToLoad, onEditorViewLoaded }) => {
             {result.error ? <p className="error-text">Processing error: {result.error}</p> : analysis && (
               <div>
                 {hasErrors ? (
-                  <textarea readOnly className="error-textarea" value={errorString} rows={Math.min(10, errorString.split('\n').length)} />
+                  <div>
+                    <textarea readOnly className="error-textarea" value={errorString} rows={Math.min(10, errorString.split('\n').length)} />
+                    {missingColumnsError && 
+                      <button onClick={() => handleAddMissingColumns(missingColumnsError.missingFields)} className="button button-primary" style={{marginTop: '10px'}}>
+                        <AddIcon /> Add missing columns
+                      </button>
+                    }
+                  </div>
                 ) : (
                   <p className="success-text"><b>File analyzed correctly.</b></p>
                 )}
@@ -259,7 +309,7 @@ const EditorView = ({ mode, fileToLoad, onEditorViewLoaded }) => {
     );
   };
 
-  const AnalysisDropzone = () => {
+  const AnalysisDropzone = ({ setError }) => {
     const inputRef = useRef(null);
 
     const detectFileType = (file, headers) => {
@@ -271,10 +321,16 @@ const EditorView = ({ mode, fileToLoad, onEditorViewLoaded }) => {
     };
 
     const processFile = (file) => {
-        if (!file || file.type !== 'text/csv') return;
+        if (!file || file.type !== 'text/csv') {
+            setError("Invalid file type. Please upload a CSV file.");
+            return;
+        }
         Papa.parse(file, { preview: 1, header: true, skipEmptyLines: true, complete: (headerResults) => {
             const type = detectFileType(file, headerResults.meta.fields);
-            if (!type) { console.error("Could not detect file type for:", file.name); return; }
+            if (!type) { 
+                setError(`Could not detect file type for "${file.name}". Please check the file content and column headers.`);
+                return; 
+            }
             setActiveTab(type);
             Papa.parse(file, { header: true, skipEmptyLines: true, complete: (fullResults) => {
                 let analysisResult;
@@ -339,30 +395,30 @@ const EditorView = ({ mode, fileToLoad, onEditorViewLoaded }) => {
       <div className="landing-options-grid">
         <div className="landing-options-column">
           <h3>Retail</h3>
-          <button className="landing-option-button-small" onClick={() => { setActiveTab('Stores'); handleCreateFromTemplate('retail_stores'); }}>
+          <button className="landing-option-button-small" onClick={() => handleCreateFromTemplate('retail_stores', 'Stores')}> 
             <CreateIcon />
             <h4>Create Stores CSV</h4>
           </button>
-          <button className="landing-option-button-small" onClick={() => { setActiveTab('Catalogue'); handleCreateFromTemplate('retail_catalogue'); }}>
+          <button className="landing-option-button-small" onClick={() => handleCreateFromTemplate('retail_catalogue', 'Catalogue')}> 
             <CreateIcon />
             <h4>Create Catalogue CSV</h4>
           </button>
-          <button className="landing-option-button-small" onClick={() => { setActiveTab('Users'); handleCreateFromTemplate('retail_users'); }}>
+          <button className="landing-option-button-small" onClick={() => handleCreateFromTemplate('retail_users', 'Users')}> 
             <CreateIcon />
             <h4>Create Users CSV</h4>
           </button>
         </div>
         <div className="landing-options-column">
           <h3>eduQa</h3>
-          <button className="landing-option-button-small" onClick={() => { setActiveTab('Stores'); handleCreateFromTemplate('edu_centers'); }}>
+          <button className="landing-option-button-small" onClick={() => handleCreateFromTemplate('edu_centers', 'Stores')}> 
             <CreateIcon />
             <h4>Create Centers CSV</h4>
           </button>
-          <button className="landing-option-button-small" onClick={() => { setActiveTab('Catalogue'); handleCreateFromTemplate('edu_catalogue'); }}>
+          <button className="landing-option-button-small" onClick={() => handleCreateFromTemplate('edu_catalogue', 'Catalogue')}> 
             <CreateIcon />
             <h4>Create Catalogue CSV</h4>
           </button>
-          <button className="landing-option-button-small" onClick={() => { setActiveTab('Users'); handleCreateFromTemplate('edu_users'); }}>
+          <button className="landing-option-button-small" onClick={() => handleCreateFromTemplate('edu_users', 'Users')}> 
             <CreateIcon />
             <h4>Create Users CSV</h4>
           </button>
@@ -372,15 +428,17 @@ const EditorView = ({ mode, fileToLoad, onEditorViewLoaded }) => {
   };
 
   const renderInitialView = () => {
-    if (mode === 'analyze') return <AnalysisDropzone />;
+    if (mode === 'analyze') return <AnalysisDropzone setError={setError} />;
     return null; 
   };
 
   const dataForActiveTab = analysisData[activeTab] && analysisData[activeTab].data;
   const isDownloadDisabled = !analysisData[activeTab]?.analysis?.isValid;
+  const invalidHeadersError = analysisData[activeTab]?.analysis?.errors.find(e => e.code === 'INVALID_HEADERS');
 
   return (
     <>
+      <Modal message={error} onClose={() => setError(null)} />
       <div className="tab-content">
         {mode === 'create' && dataForActiveTab ? (
           // Render CsvEditor when in create mode and data is loaded
@@ -405,7 +463,7 @@ const EditorView = ({ mode, fileToLoad, onEditorViewLoaded }) => {
           </div>
         ) : (
           // Render analyze mode options or editor
-          !dataForActiveTab ? renderInitialView() : (
+          !dataForActiveTab || invalidHeadersError ? renderInitialView() : (
           <div>
             {renderAccordion(activeTab, analysisData[activeTab])}
             <div className="action-buttons">

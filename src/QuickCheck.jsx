@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useRef } from 'react';
 import Papa from 'papaparse';
 import validateFile from './validation';
+import Modal from './Modal';
 
 const FILE_TYPES = ['Stores', 'Catalogue', 'Users'];
 
@@ -11,6 +12,7 @@ const QuickCheck = ({ onAnalyzeFile }) => {
     Users: null,
   });
   const [isDragging, setIsDragging] = useState(false);
+  const [error, setError] = useState(null);
   const inputRef = useRef(null);
 
   const detectFileType = (file, headers) => {
@@ -29,7 +31,7 @@ const QuickCheck = ({ onAnalyzeFile }) => {
 
   const processFile = (file) => {
     if (!file || file.type !== 'text/csv') {
-        console.error("Invalid file type:", file.name);
+        setError("Invalid file type. Please upload a CSV file.");
         return;
     }
 
@@ -42,7 +44,7 @@ const QuickCheck = ({ onAnalyzeFile }) => {
         const type = detectFileType(file, headers);
 
         if (!type) {
-          console.error("Could not detect file type for:", file.name);
+          setError(`Could not detect file type for "${file.name}". Please check the file content and column headers.`);
           return;
         }
 
@@ -125,6 +127,7 @@ const QuickCheck = ({ onAnalyzeFile }) => {
 
   return (
     <div>
+      <Modal message={error} onClose={() => setError(null)} />
       <p style={{textAlign: 'center', marginBottom: '2rem'}}>Drop up to 3 files (Stores, Catalogue, Users) in the area below.</p>
       
       <div 
@@ -143,7 +146,8 @@ const QuickCheck = ({ onAnalyzeFile }) => {
             style={{ display: 'none' }} 
             onChange={handleFileSelect} 
         />
-        <p>Drag your files here or click to select</p>
+        <p>Drag and drop files to check them</p>
+        <button className="button button-primary" style={{marginTop: '10px'}}>Or select files</button>
       </div>
 
       <div className="quick-check-container">

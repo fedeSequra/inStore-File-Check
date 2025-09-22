@@ -1,6 +1,22 @@
+const compareHeaders = (arr1, arr2) => {
+  if (arr1.length !== arr2.length) return false;
+  const sorted1 = [...arr1].sort();
+  const sorted2 = [...arr2].sort();
+  return sorted1.every((value, index) => value === sorted2[index]);
+};
+
 const validateFile = (fileType, data) => {
   const errors = [];
   let catalogueType = "N/A";
+
+  if (!data || data.length === 0) {
+    errors.push({ row: null, column: null, message: "File cannot be empty." });
+    return {
+      isValid: false,
+      errors: errors,
+      catalogueType: catalogueType,
+    };
+  }
 
   switch (fileType) {
     case 'Stores':
@@ -24,12 +40,20 @@ const validateFile = (fileType, data) => {
 };
 
 const validateStores = (data, errors) => {
-  if (!data || data.length === 0) {
-    errors.push({ row: null, column: null, message: "File cannot be empty." });
+  const headers = Object.keys(data[0]);
+  const expectedHeaders = ['reference', 'name', 'city', 'full_address', 'postal_code', 'store_phone', 'store_email', 'store_manager_fullname', 'owner_contact_fullname', 'owner_email', 'owner_phone', 'area_manager_fullname', 'area_manager_email', 'owner', 'own'];
+  
+  if (!compareHeaders(headers, expectedHeaders)) {
+    errors.push({ 
+      row: null, 
+      column: null, 
+      message: `The columns in the file do not match the expected columns for a Stores file.`,
+      code: 'INVALID_HEADERS',
+    });
     return;
   }
-  const requiredFields = ['reference', 'name', 'city', 'full_address', 'postal_code', 'store_phone', 'store_manager_fullname'];
 
+  const requiredFields = ['reference', 'name', 'city', 'full_address', 'postal_code', 'store_phone', 'store_manager_fullname'];
   data.forEach((row, index) => {
     requiredFields.forEach(field => {
       if (!row[field]) {
@@ -44,17 +68,23 @@ const validateStores = (data, errors) => {
 };
 
 const validateCatalogue = (data, errors) => {
-  if (!data || data.length === 0) {
-    errors.push({ row: null, column: null, message: "The catalogue file is empty." });
-    return "Unknown";
-  }
-
-  let catalogueType = "Unknown";
   const headers = Object.keys(data[0]);
+  let catalogueType = "Unknown";
 
   if (headers.includes('price_with_tax')) {
     catalogueType = "eduQa";
-    const requiredFields = ['reference', 'name', 'price_with_tax'];
+    const expectedHeaders = ['reference', 'name', 'downloadable', 'price_with_tax', 'ends_in'];
+    if (!compareHeaders(headers, expectedHeaders)) {
+      errors.push({ 
+        row: null, 
+        column: null, 
+        message: `The columns in the file do not match the expected columns for an eduQa Catalogue file.`,
+        code: 'INVALID_HEADERS',
+      });
+      return catalogueType;
+    }
+
+    const requiredFields = ['reference', 'name', 'price_with_tax', 'downloadable'];
     data.forEach((row, index) => {
       requiredFields.forEach(field => {
         if (row[field] === undefined || row[field] === null || row[field] === '') {
@@ -81,6 +111,17 @@ const validateCatalogue = (data, errors) => {
     });
   } else if (headers.includes('Price')) {
     catalogueType = "Retail";
+    const expectedHeaders = ['Reference', 'Name', 'Description', 'Price', 'Category', 'Image'];
+    if (!compareHeaders(headers, expectedHeaders)) {
+      errors.push({ 
+        row: null, 
+        column: null, 
+        message: `The columns in the file do not match the expected columns for a Retail Catalogue file.`,
+        code: 'INVALID_HEADERS',
+      });
+      return catalogueType;
+    }
+
     const requiredFields = ['Reference', 'Name', 'Price'];
     data.forEach((row, index) => {
       requiredFields.forEach(field => {
@@ -113,12 +154,20 @@ const validateCatalogue = (data, errors) => {
 };
 
 const validateUsers = (data, errors) => {
-  if (!data || data.length === 0) {
-    errors.push({ row: null, column: null, message: "File cannot be empty." });
+  const headers = Object.keys(data[0]);
+  const expectedHeaders = ['Name', 'Lastname', 'ID', 'Username', 'Password', 'Store', 'Store Name', 'Role'];
+  
+  if (!compareHeaders(headers, expectedHeaders)) {
+    errors.push({ 
+      row: null, 
+      column: null, 
+      message: `The columns in the file do not match the expected columns for a Users file.`,
+      code: 'INVALID_HEADERS',
+    });
     return;
   }
 
-  const requiredFields = ['Name', 'Username', 'Password'];
+  const requiredFields = ['Name', 'Username', 'Password', 'Store'];
   let hasAdmin = false;
   const emptyRows = [];
 
