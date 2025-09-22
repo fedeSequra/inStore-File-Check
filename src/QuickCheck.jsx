@@ -1,9 +1,9 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState } from 'react';
 import Papa from 'papaparse';
 import validateFile from './validation';
 import Modal from './Modal';
-
-const FILE_TYPES = ['Stores', 'Catalogue', 'Users'];
+import { FILE_TYPES } from './constants';
+import QuickCheckDropzone from './QuickCheckDropzone';
 
 const QuickCheck = ({ onAnalyzeFile }) => {
   const [results, setResults] = useState({
@@ -11,9 +11,7 @@ const QuickCheck = ({ onAnalyzeFile }) => {
     Catalogue: null,
     Users: null,
   });
-  const [isDragging, setIsDragging] = useState(false);
   const [error, setError] = useState(null);
-  const inputRef = useRef(null);
 
   const detectFileType = (file, headers) => {
     const lowerCaseName = file.name.toLowerCase();
@@ -75,25 +73,6 @@ const QuickCheck = ({ onAnalyzeFile }) => {
     [...files].slice(0, 3).forEach(processFile);
   };
 
-  const handleDrop = useCallback((event) => {
-    event.preventDefault();
-    event.stopPropagation();
-    setIsDragging(false);
-    processFiles(event.dataTransfer.files);
-  }, []);
-
-  const handleFileSelect = (event) => {
-    processFiles(event.target.files);
-  };
-
-  const handleZoneClick = () => {
-    inputRef.current.click();
-  };
-
-  const handleDragOver = useCallback((event) => { event.preventDefault(); event.stopPropagation(); }, []);
-  const handleDragEnter = useCallback((event) => { event.preventDefault(); event.stopPropagation(); setIsDragging(true); }, []);
-  const handleDragLeave = useCallback((event) => { event.preventDefault(); event.stopPropagation(); setIsDragging(false); }, []);
-
   const renderResult = (type) => {
     const result = results[type];
     let content;
@@ -130,25 +109,7 @@ const QuickCheck = ({ onAnalyzeFile }) => {
       <Modal message={error} onClose={() => setError(null)} />
       <p style={{textAlign: 'center', marginBottom: '2rem'}}>Drop up to 3 files (Stores, Catalogue, Users) in the area below.</p>
       
-      <div 
-        className={`quick-check-dropzone ${isDragging ? 'dragging' : ''}`}
-        onClick={handleZoneClick}
-        onDrop={handleDrop}
-        onDragOver={handleDragOver}
-        onDragEnter={handleDragEnter}
-        onDragLeave={handleDragLeave}
-      >
-        <input 
-            type="file" 
-            ref={inputRef} 
-            multiple 
-            accept=".csv" 
-            style={{ display: 'none' }} 
-            onChange={handleFileSelect} 
-        />
-        <p>Drag and drop files to check them</p>
-        <button className="button button-primary" style={{marginTop: '10px'}}>Or select files</button>
-      </div>
+      <QuickCheckDropzone onFiles={processFiles} setResults={setResults} />
 
       <div className="quick-check-container">
         {FILE_TYPES.map(type => renderResult(type))}

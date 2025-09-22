@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import Papa from 'papaparse';
 import CsvEditor from './CsvEditor';
 import validateFile from './validation';
 import Modal from './Modal';
+import AnalysisDropzone from './AnalysisDropzone';
 
 const AddIcon = () => <svg stroke="currentColor" fill="none" strokeWidth="2" viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round" height="1em" width="1em" xmlns="http://www.w3.org/2000/svg"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>;
 const TrashIcon = () => <svg stroke="currentColor" fill="none" strokeWidth="2" viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round" height="1em" width="1em" xmlns="http://www.w3.org/2000/svg"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>;
@@ -12,20 +13,12 @@ const CreateIcon = () => (
   <svg stroke="currentColor" fill="none" strokeWidth="2" viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round" height="2em" width="2em" xmlns="http://www.w3.org/2000/svg"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="12" y1="18" x2="12" y2="12"></line><line x1="9" y1="15" x2="15" y2="15"></line></svg>
 );
 
-const TABS = ['Stores', 'Catalogue', 'Users'];
-const initialAnalysisState = { analysis: null, fileName: null, rowCount: 0, data: null, error: null };
-
-const initialState = {
-  Stores: initialAnalysisState,
-  Catalogue: initialAnalysisState,
-  Users: initialAnalysisState,
-};
+import { TABS, initialState } from './constants';
 
 const EditorView = ({ mode, fileToLoad, onEditorViewLoaded }) => {
   const [activeTab, setActiveTab] = useState(TABS[0]);
   const [analysisData, setAnalysisData] = useState(initialState);
   const [isAccordionOpen, setAccordionOpen] = useState(false);
-  const [isDragging, setIsDragging] = useState(false);
   const [error, setError] = useState(null);
 
   useEffect(() => {
@@ -90,7 +83,7 @@ const EditorView = ({ mode, fileToLoad, onEditorViewLoaded }) => {
 
   const handleCreateFromTemplate = (templateName, tabName) => {
     setActiveTab(tabName);
-    fetch(`/templates/${templateName}.csv`)
+    fetch(`${import.meta.env.BASE_URL}templates/${templateName}.csv`)
       .then(response => response.text())
       .then(csvText => {
         Papa.parse(csvText, {
@@ -309,87 +302,6 @@ const EditorView = ({ mode, fileToLoad, onEditorViewLoaded }) => {
     );
   };
 
-  const AnalysisDropzone = ({ setError }) => {
-    const inputRef = useRef(null);
-
-    const detectFileType = (file, headers) => {
-        const lowerCaseName = file.name.toLowerCase();
-        if (lowerCaseName.includes('store') || lowerCaseName.includes('center')) return 'Stores';
-        if (headers.includes('Username') && headers.includes('Password')) return 'Users';
-        if (headers.includes('price_with_tax') || headers.includes('Price')) return 'Catalogue';
-        return null;
-    };
-
-    const processFile = (file) => {
-        if (!file || file.type !== 'text/csv') {
-            setError("Invalid file type. Please upload a CSV file.");
-            return;
-        }
-        Papa.parse(file, { preview: 1, header: true, skipEmptyLines: true, complete: (headerResults) => {
-            const type = detectFileType(file, headerResults.meta.fields);
-            if (!type) { 
-                setError(`Could not detect file type for "${file.name}". Please check the file content and column headers.`);
-                return; 
-            }
-            setActiveTab(type);
-            Papa.parse(file, { header: true, skipEmptyLines: true, complete: (fullResults) => {
-                let analysisResult;
-                if (fullResults.errors.length) {
-                    analysisResult = { isValid: false, errors: fullResults.errors };
-                } else {
-                    analysisResult = validateFile(type, fullResults.data);
-                }
-                handleFileParsed(type, { 
-                    analysis: analysisResult, 
-                    fileName: file.name,
-                    data: fullResults.data,
-                    rowCount: fullResults.data.length,
-                    error: null
-                });
-            }});
-        }});
-    };
-
-    const handleDrop = useCallback((event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        setIsDragging(false);
-        if (event.dataTransfer.files && event.dataTransfer.files.length > 0) {
-            setAnalysisData(initialState);
-            processFile(event.dataTransfer.files[0]);
-        }
-    }, []);
-
-    const handleFileSelect = (event) => {
-        if (event.target.files && event.target.files.length > 0) {
-            setAnalysisData(initialState);
-            processFile(event.target.files[0]);
-        }
-    };
-
-    const handleZoneClick = () => {
-        inputRef.current.click();
-    };
-
-    const handleDragOver = useCallback((e) => { e.preventDefault(); e.stopPropagation(); }, []);
-    const handleDragEnter = useCallback((e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(true); }, []);
-    const handleDragLeave = useCallback((e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(false); }, []);
-
-    return (
-        <div 
-            className={`quick-check-dropzone ${isDragging ? 'dragging' : ''}`}
-            onClick={handleZoneClick}
-            onDrop={handleDrop}
-            onDragOver={handleDragOver}
-            onDragEnter={handleDragEnter}
-            onDragLeave={handleDragLeave}
-        >
-            <input type="file" ref={inputRef} accept=".csv" style={{ display: 'none' }} onChange={handleFileSelect} />
-            <p>Drag & drop a single file to analyze and edit</p>
-        </div>
-    );
-  };
-
   const renderCreateTemplateOptions = () => {
     return (
       <div className="landing-options-grid">
@@ -428,7 +340,7 @@ const EditorView = ({ mode, fileToLoad, onEditorViewLoaded }) => {
   };
 
   const renderInitialView = () => {
-    if (mode === 'analyze') return <AnalysisDropzone setError={setError} />;
+    if (mode === 'analyze') return <AnalysisDropzone onFileParsed={handleFileParsed} setAnalysisData={setAnalysisData} setError={setError} setActiveTab={setActiveTab} />; 
     return null; 
   };
 
